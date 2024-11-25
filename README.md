@@ -31,7 +31,10 @@ ___
 
 4) __Create .env file and add the following code to it;__
 
-> export BOT_TOKEN="7550196049:AAHmNowaAFI-KBj-cMBQdlOJ02Z2qnRrLQc"
+> export BOT_TOKEN="your bot token"
+> > Hint; You will need a valid bot token. Create your own telegram bot using [@BotFather](https://t.me/BotFather) and
+> > use its token for development and testing. Or contact me [@Aleksandr_Website_Dev](https://t.me/Aleksandr_Website_Dev)
+> > and I will send you the token of my bot.
 
 5) __Run bot.py to activate the telegram bot.__
 6) __Navigate to the  [@Stone_Cutter_Accounting_bot](https://t.me/Stone_Cutter_Accounting_bot) and start interacting.__
