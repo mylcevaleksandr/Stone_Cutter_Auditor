@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, OrderedDict
 
 from prettytable import PrettyTable, HRuleStyle, VRuleStyle
 
@@ -22,7 +22,7 @@ def get_user_data() -> dict:
                 "available_saws":
                 {
                      saw_number:{
-                    blocks_decommissioned:[
+                    "blocks_decommissioned":[
                         {
                             block_number:str,
                             block_cubic_meters:"int"
@@ -39,7 +39,7 @@ def get_user_data() -> dict:
                             }
                         }
                     ],
-                    "tech_cut":[
+                    "tech_cuts":[
                         {
                             "block_number":str,
                             "width":int,
@@ -86,33 +86,35 @@ def save_user_data():
 
 
 # function to create pretty table
-def create_pretty_table(field_names: List[str], rows: List[List:str]):
-    table = PrettyTable(hrules=HRuleStyle.ALL, vrules=VRuleStyle.ALL)
+def create_pretty_table(field_names: List[str], rows: List[List:str],
+                        title: str = "Welcome! These are all input options:"):
+    table = PrettyTable(hrules=HRuleStyle.ALL, vrules=VRuleStyle.ALL, header=True, header_style='upper')
     table.align = 'l'
-    table.title = "Welcome"
+    table.title = title
     table.field_names = field_names
     table.add_rows(rows)
 
-    return table
+    return f'```\n{table}```'
 
 
 # Handler for /start command to initiate the process
 @bot.message_handler(commands=['start'])
 def start_message(message):
-    table_new = create_pretty_table(field_names=["Commands", "Input Options"],
-                                    rows=[["/start", "Start interaction with bot"],
-                                          ["/saw", "/saw <number>"],
-                                          ["/block", "/block, <number>, <cubic meters>"],
-                                          ["/slab", "/slab, <number>, <width>, <height>, <thickness>"]])
-
-    response = '```\n{}```'.format(table_new.get_string())
+    table_start = create_pretty_table(
+        field_names=["Commands", "Input Options"],
+        rows=[
+            ["/start", "Start interaction with bot"],
+            ["/saw", "/saw <number>"],
+            ["/block", "/block, <number>, <cubic meters>"],
+            ["/slab", "/slab, <number>, <width>, <height>, <thickness>"],
+            ["/tech", "/tech, <block number>, <width>, <height>"]
+        ])
 
     user_id = str(message.chat.id)
     bot.send_message(user_id,
-                     response,
+                     table_start,
                      parse_mode='Markdown'
                      )
-    # bot.send_message(user_id, user_data)
 
 
 # Handler to process user input for saw number
@@ -120,30 +122,41 @@ def start_message(message):
 def process_saw_number(message):
     user_id: str = str(message.chat.id)
     split_message = message.text.split()
+    saw_data = {
+        "blocks_decommissioned": [],
+        "new_slabs": [],
+        "tech_cuts": [],
+        "new_blocks": []
+    }
     if len(split_message) > 1:
 
         saw_number = split_message[-1]
         if saw_number.isdigit():
 
             if user_id not in user_data:
-                user_data[user_id] = {'available_saws': {}, 'current_saw_number': None}
-                user_data[user_id]['current_saw_number'] = saw_number
-
-            if saw_number not in user_data[user_id]['available_saws']:
-                user_data[user_id]['available_saws'][saw_number] = {}
+                user_data[user_id] = {'available_saws': {saw_number: saw_data}, 'current_saw_number': saw_number}
+            elif saw_number not in user_data[user_id]['available_saws']:
+                user_data[user_id]['available_saws'][saw_number] = saw_data
                 user_data[user_id]['current_saw_number'] = saw_number
             else:
+                saw_data = user_data[user_id]['available_saws'][saw_number]
                 user_data[user_id]['current_saw_number'] = saw_number
             save_user_data()
+            saw_message = ""
+            for key, value in saw_data.items():
+                if not value:
+                    empty_message = create_pretty_table(field_names=[key], rows=[["This entry is currently empty"]],
+                                                        title=f"Saw number: {saw_number} selected")
+                    saw_message += empty_message
 
             bot.send_message(user_id,
-                             f"Saw number {saw_number} selected. Enter the block number using /block <your number here>")
+                             saw_message,
+                             parse_mode='Markdown')
         else:
             bot.send_message(user_id, "Please enter a valid integer as the saw number.")
 
     else:
-        bot.send_message(user_id, "Please enter a valid saw number after the /saw command. */saw 1*",
-                         parse_mode="Markdown")
+        bot.send_message(user_id, "Please enter a valid saw number after the /saw command. Example: /saw <number>")
 
 
 # Handler to process user input for block number
@@ -175,12 +188,141 @@ def start_bot_polling():
     try:
         bot.infinity_polling()
     except Exception as e:
-        print(f"An error occured: {e}")
+        print(f"An error occurred: {e}")
 
 
 polling_thread = threading.Thread(target=start_bot_polling)
-polling_thread.start()
 
-table_new = create_pretty_table(field_names=["Commands", "Input Options"], rows=[["/start", "Some description"]])
-print(table_new)
+
+# polling_thread.start()
+
+def blocks_decommissioned_message(key, value, saw_number) -> str:
+    unique_keys = list(OrderedDict.fromkeys(key for d in value for key in d.keys()))
+    row_values = []
+    for item in value:
+        row_values.append(list(item.values()))
+    message = create_pretty_table(field_names=unique_keys, rows=row_values,
+                                  title=f"Saw # {saw_number}, {key}")
+    return message
+
+
+def new_slabs_message(key, value, saw_number) -> str:
+    title = key
+    field_names = ["number", "w", "l", "t", "m2"]
+    rows = []
+    for item in value:
+        for key, value in item.items():
+            rows.append(
+                [key, str(value["width"]), str(value["length"]), str(value["thickness"]), str(value["square_meters"])])
+
+    message = create_pretty_table(field_names=field_names, rows=rows, title=f"Saw # {saw_number}, {title}")
+    return message
+
+
+def tech_cuts_message(key, value, saw_number) -> str:
+    title = key
+    field_names = ["block #", "w", "l", "m2"]
+    rows = []
+    for item in value:
+        for key, value in item.items():
+            rows.append(
+                [key, str(value["width"]), str(value["length"]), str(value["square_meters"])])
+
+    message = create_pretty_table(field_names=field_names, rows=rows, title=f"Saw # {saw_number}, {title}")
+    return message
+
+
+def new_blocks_message(key, value, saw_number) -> str:
+    title = key
+    field_names = ["block #", "w", "l", "h", "m2"]
+    rows = []
+    for item in value:
+        for key, value in item.items():
+            rows.append(
+                [key, str(value["width"]), str(value["length"]), str(value["height"]), str(value["square_meters"])])
+
+    message = create_pretty_table(field_names=field_names, rows=rows, title=f"Saw # {saw_number}, {title}")
+    return message
+
+
+def calculate_square_meters(width_mm: int, length_mm: int) -> float:
+    width_cm = width_mm / 10
+    length_cm = length_mm / 10
+    area_cm2 = width_cm * length_cm
+    area_m2 = area_cm2 / 10000
+    area_m2_formatted = format(area_m2, '.2f')
+    return float(area_m2_formatted)
+
+
+my_saw_number = 7
+my_saw_data = {
+    "blocks_decommissioned": [
+        {
+            "block_number": "123E/1",
+            "block_m3": 3
+        },
+        {
+            "block_number": "123E/2",
+            "block_m3": 1
+        },
+    ],
+    "new_slabs": [
+        {
+            "123E/1-1":
+                {
+                    "width": 1100,
+                    "length": 550,
+                    "thickness": 50,
+                    "square_meters": .60
+                }
+        },
+        {
+            "123E/1-3":
+                {
+                    "width": 1200,
+                    "length": 650,
+                    "thickness": 50,
+                    "square_meters": .75
+                }
+        }
+    ],
+    "tech_cuts": [
+        {
+            "123/1":
+                {
+                    "width": 1200,
+                    "length": 650,
+                    "square_meters": .75
+                }
+        }
+    ],
+    "new_blocks": [
+        {
+            "123/2":
+                {
+                    "width": 1200,
+                    "length": 650,
+                    "height": 500,
+                    "square_meters": .75
+                }
+        }
+    ]
+}
+my_saw_message = ""
+for my_key, my_value in my_saw_data.items():
+    if not my_value:
+        my_empty_message = create_pretty_table(field_names=[my_key], rows=[["This entry is currently empty"]],
+                                               title=f"Saw number: {my_saw_number} selected")
+        my_saw_message += my_empty_message
+    else:
+        if my_key == "blocks_decommissioned":
+            my_saw_message += blocks_decommissioned_message(my_key, my_value, my_saw_number)
+        if my_key == "new_slabs":
+            my_saw_message += new_slabs_message(my_key, my_value, my_saw_number)
+        if my_key == "tech_cuts":
+            my_saw_message += tech_cuts_message(my_key, my_value, my_saw_number)
+        if my_key == "new_blocks":
+            my_saw_message += new_blocks_message(my_key, my_value, my_saw_number)
+
+print(my_saw_message)
 print("Bot started successfully without errors!")
