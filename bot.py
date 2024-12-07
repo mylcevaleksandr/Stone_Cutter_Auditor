@@ -1,3 +1,7 @@
+from typing import List
+
+from prettytable import PrettyTable, HRuleStyle, VRuleStyle
+
 from config import telegram_token
 import telebot
 import threading
@@ -8,7 +12,57 @@ bot = telebot.TeleBot(telegram_token)
 
 
 # Get user data from json file if it exists
-def get_user_data():
+def get_user_data() -> dict:
+    """
+    Get saved user data.
+
+    :return:
+        {
+            user_id:{
+                "available_saws":
+                {
+                     saw_number:{
+                    blocks_decommissioned:[
+                        {
+                            block_number:str,
+                            block_cubic_meters:"int"
+                        }
+                    ],
+                    "new_slabs":[
+                        {
+                            slab_number:
+                            {
+                                "width":int,
+                                "length":int,
+                                "thickness":int.
+                                "square_meters":int
+                            }
+                        }
+                    ],
+                    "tech_cut":[
+                        {
+                            "block_number":str,
+                            "width":int,
+                            "length":int
+                            "square_meters":int
+                        }
+                    ],
+                    "new_blocks":[
+                        {
+                            block_number:str,
+                            "width":int,
+                            "length":int,
+                            "height":int,
+                            "block_cubic_meters":int
+                        }
+                    ]
+                },
+            }
+        }
+    }
+
+    """
+
     file = open('user_data.json', 'r')
     try:
         user_data_from_json = json.load(file)
@@ -31,15 +85,33 @@ def save_user_data():
         json.dump(user_data, file, indent=4)
 
 
+# function to create pretty table
+def create_pretty_table(field_names: List[str], rows: List[List:str]):
+    table = PrettyTable(hrules=HRuleStyle.ALL, vrules=VRuleStyle.ALL)
+    table.align = 'l'
+    table.title = "Welcome"
+    table.field_names = field_names
+    table.add_rows(rows)
+
+    return table
+
+
 # Handler for /start command to initiate the process
 @bot.message_handler(commands=['start'])
 def start_message(message):
+    table_new = create_pretty_table(field_names=["Commands", "Input Options"],
+                                    rows=[["/start", "Start interaction with bot"],
+                                          ["/saw", "/saw <number>"],
+                                          ["/block", "/block, <number>, <cubic meters>"],
+                                          ["/slab", "/slab, <number>, <width>, <height>, <thickness>"]])
+
+    response = '```\n{}```'.format(table_new.get_string())
+
     user_id = str(message.chat.id)
     bot.send_message(user_id,
-                     "Welcome! Here is a list of available commands/n"
-                     "* /saw 1 - sets the current saw number*"
-                     "+ /block 4141353115 - sets the block number for the chosen saw",
-                     parse_mode="Markdown")
+                     response,
+                     parse_mode='Markdown'
+                     )
     # bot.send_message(user_id, user_data)
 
 
@@ -109,4 +181,6 @@ def start_bot_polling():
 polling_thread = threading.Thread(target=start_bot_polling)
 polling_thread.start()
 
+table_new = create_pretty_table(field_names=["Commands", "Input Options"], rows=[["/start", "Some description"]])
+print(table_new)
 print("Bot started successfully without errors!")
