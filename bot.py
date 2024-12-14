@@ -10,6 +10,7 @@ import json
 bot = telebot.TeleBot(telegram_token)
 # Global variable to store temporary message data for user confirmation
 temporary_data: Dict[str, str] = {}
+user_data: Dict
 
 
 # Get user data from json file if it exists
@@ -86,24 +87,6 @@ def save_user_data():
         json.dump(user_data, file, indent=4)
 
 
-# Find and set key in the user data nested dictionary structure
-def find_and_set_key_recursive(data, target_key, new_value):
-    if isinstance(data, dict):
-        for key, value in data.items():
-            if key == target_key:
-                data[key] = new_value
-                return True
-            if find_and_set_key_recursive(value, target_key, new_value):
-                return True
-    elif isinstance(data, list):
-        for item in data:
-            if find_and_set_key_recursive(item, target_key, new_value):
-                return True
-
-    return False
-
-
-# Handler for /start command to initiate the process
 @bot.message_handler(commands=['start'])
 def process_start_message(message):
     reply_message = start_message()
@@ -142,6 +125,7 @@ def process_saw_number(message):
                 else:
                     if key == "blocks_decommissioned":
                         saw_message += blocks_decommissioned_message(key, value, saw_number)
+                        saw_message += block_all_commands_message()
                     if key == "new_slabs":
                         saw_message += new_slabs_message(key, value, saw_number)
                     if key == "tech_cuts":
@@ -150,10 +134,12 @@ def process_saw_number(message):
                         saw_message += new_blocks_message(key, value, saw_number)
             bot.send_message(user_id, saw_message, parse_mode='Markdown')
         else:
-            bot.send_message(user_id, "Please enter a valid integer as the saw number.")
+            reply_message = bad_value_entered(message.text)
+            bot.send_message(user_id, reply_message)
 
     else:
-        bot.send_message(user_id, "Please enter a valid saw number after the /saw command. Example: /saw <number>")
+        reply_message = bad_value_entered(message.text)
+        bot.send_message(user_id, reply_message)
 
 
 # Handler to process user input for block number
@@ -163,29 +149,57 @@ def process_block_number(message):
     if user_id in user_data and 'available_saws' in user_data[user_id]:
         available_saws = user_data[user_id]['available_saws']
         current_saw_number = user_data[user_id].get('current_saw_number')
-        if current_saw_number and current_saw_number in available_saws:
-            block_number = message.text.split(' ')[-2]
-            block_value = message.text.split(' ')[-1]
-
-            blocks_decommissioned: Dict = available_saws[current_saw_number]['blocks_decommissioned']
-            if block_number not in blocks_decommissioned:
-                blocks_decommissioned[block_number] = block_value
-
-                message = block_decommissioned_message(block_number=block_number, saw_number=current_saw_number)
-                bot.send_message(user_id, message)
-                save_user_data()
+        if len(message.text.split()) > 2 and message.text[0] != "/block":
+            block_number = message.text.split()[-2]
+            new_block_value = message.text.split()[-1]
+            if current_saw_number and current_saw_number in available_saws:
+                blocks_decommissioned: Dict = available_saws[current_saw_number]['blocks_decommissioned']
+                if block_number not in blocks_decommissioned:
+                    blocks_decommissioned[block_number] = new_block_value
+                    reply_message = block_decommissioned_message(block_number=block_number,
+                                                                 saw_number=current_saw_number)
+                    bot.send_message(user_id, reply_message)
+                    save_user_data()
+                else:
+                    reply_message = bad_value_entered(data=message.text) + block_all_commands_message(
+                        saw_number=current_saw_number)
+                    bot.send_message(user_id, reply_message, parse_mode="Markdown")
             else:
-                value = blocks_decommissioned[block_number]
-                global temporary_data
-                temporary_data = {
-                    'found_data': user_data.get(user_id, {}).get('available_saws', {}).get(current_saw_number, {}).get(
-                        'blocks_decommissioned', {}), 'target_key': block_number, 'new_value': block_value}
-                bot.send_message(user_id,
-                                 f"It seems like you're trying to make changes to existing entry; {block_number}: {value}. Type /yes to accept changes or /no to discard")
+                reply_message: str = select_saw_message()
+                bot.send_message(user_id, reply_message)
         else:
-            bot.send_message(user_id, "Please select saw number first")
+            reply_message = bad_value_entered(data=message.text) + block_all_commands_message(
+                saw_number=current_saw_number)
+            bot.send_message(user_id, reply_message, parse_mode="Markdown")
     else:
         bot.send_message(user_id, "No user data found")
+
+
+@bot.message_handler(commands=['update'])
+def process_delete_entry(message): ...
+
+
+@bot.message_handler(commands=['delete'])
+def process_delete_entry(message):
+    user_id: str = str(message.chat.id)
+    command = message.text.split()[0].lstrip('/')
+    entry_type: str = message.text.split()[1]
+    target_key: str = message.text.split()[2]
+    saw_number = user_data[user_id]['current_saw_number']
+    all_saws = user_data[user_id]['available_saws']
+    global temporary_data
+    if entry_type and target_key:
+        if entry_type == 'block':
+            blocks:dict= all_saws[saw_number]['blocks_decommissioned']
+            if target_key in blocks:
+                temporary_data = {
+                    'target_key': target_key,
+                    'entry_type': 'block',
+                    'command': command,
+                }
+                reply_message = confirm_block_delete_message(saw_number=saw_number,block_number=target_key,block_value=blocks[target_key])
+
+                bot.send_message(user_id, reply_message)
 
 
 @bot.message_handler(commands=['yes'])
@@ -193,15 +207,30 @@ def process_submit_changes(message):
     user_id = str(message.chat.id)
     global temporary_data
     key = temporary_data['target_key']
-    value = temporary_data['new_value']
-    if find_and_set_key_recursive(data=temporary_data['found_data'], target_key=key, new_value=value):
-        save_user_data()
-        bot.send_message(user_id, f"Key {key} updated with new value {value}")
+    entry_type = temporary_data['entry_type']
+    command = temporary_data['command']
+    saw_number = user_data[user_id]['current_saw_number']
+    selected_saw = user_data[user_id]['available_saws'][saw_number]
+
+    if entry_type == 'block':
+        target_dict = selected_saw['blocks_decommissioned']
+        if key in target_dict:
+            bot.send_message(user_id, command)
+            if command == 'update':
+                new_value = temporary_data['new_value']
+                target_dict[key] = new_value
+                bot.send_message(user_id, f"Block {key} updated with new value {new_value} m3.")
+            elif command == 'delete':
+                del target_dict[key]
+                bot.send_message(user_id, f"Block {key} deleted.")
+    save_user_data()
+    temporary_data = {}
 
 
 @bot.message_handler(commands=['no'])
-def process_discard_changes():
+def process_discard_changes(message):
     global temporary_data
+    temporary_data = {}
 
 
 # Handler to process user input for cubic meters and calculate square
