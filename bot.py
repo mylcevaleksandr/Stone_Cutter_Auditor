@@ -1,3 +1,4 @@
+from multiprocessing.reduction import duplicate
 from typing import List, Dict
 from messages import *
 
@@ -5,6 +6,8 @@ from config import telegram_token
 import telebot
 import threading
 import json
+
+from utils import create_slabs, get_current_saw_number
 
 # Initialize the bot
 bot = telebot.TeleBot(telegram_token)
@@ -20,49 +23,46 @@ def get_user_data() -> dict:
 
     :return:
         {
-            user_id:{
+            user_id:
+            {
                 "available_saws":
                 {
-                     saw_number:{
-                    "blocks_decommissioned":[
+                     saw_number:
+                     {
+                        "blocks_decommissioned":
                         {
                             block_number:str,
                             block_cubic_meters:"int"
                         }
-                    ],
-                    "new_slabs":[
+                    },
+                    "new_slabs":
+                    {
+                        slab_number:
                         {
-                            slab_number:
-                            {
-                                "width":int,
-                                "length":int,
-                                "thickness":int.
-                                "square_meters":int
-                            }
-                        }
-                    ],
-                    "tech_cuts":[
-                        {
-                            "block_number":str,
-                            "width":int,
-                            "length":int
-                            "square_meters":int
-                        }
-                    ],
-                    "new_blocks":[
-                        {
-                            block_number:str,
                             "width":int,
                             "length":int,
-                            "height":int,
-                            "block_cubic_meters":int
+                            "thickness":int.
+                            "square_meters":int
                         }
-                    ]
+                    },
+                    "tech_cuts":
+                    {
+                        "block_number":str,
+                        "width":int,
+                        "length":int
+                        "square_meters":int
+                    },
+                    "new_blocks":
+                    {
+                        block_number:str,
+                        "width":int,
+                        "length":int,
+                        "height":int,
+                        "block_cubic_meters":int
+                    }
                 },
             }
         }
-    }
-
     """
 
     file = open('user_data.json', 'r')
@@ -101,9 +101,9 @@ def process_saw_number(message):
     split_message = message.text.split()
     saw_data = {
         "blocks_decommissioned": {},
-        "new_slabs": [],
-        "tech_cuts": [],
-        "new_blocks": []
+        "new_slabs": {},
+        "tech_cuts": {},
+        "new_blocks": {}
     }
     if len(split_message) > 1:
         saw_number = split_message[-1]
@@ -175,8 +175,67 @@ def process_block_number(message):
         bot.send_message(user_id, "No user data found")
 
 
+@bot.message_handler(commands=["slab"])
+def process_slab_number(message):
+    user_id: str = str(message.chat.id)
+    split_message: str = message.text.split()
+    block_number = split_message[1]
+    slab_number: str = split_message[2]
+    slab_width: int = int(split_message[3])
+    slab_length: int = int(split_message[4])
+    slab_thickness: int = int(split_message[5])
+    if not block_number or not slab_number or not slab_width or not slab_length or not slab_thickness:
+        reply_message = bad_value_entered(message.text)
+        bot.send_message(user_id, reply_message)
+    else:
+        bot.send_message(user_id,
+                         f"block:Ok {block_number}, #: {slab_number}, w: {slab_width}, l: {slab_length}, th: {slab_thickness}")
+        current_saw_number = get_current_saw_number(user_id=user_id, block_number=block_number,
+                                                    user_data=user_data)
+        if current_saw_number:
+            new_slabs = user_data[user_id]['available_saws'][current_saw_number].get('new_slabs', {})
+            slab_range_start = int(slab_number)
+            slab_range_end = int(slab_number)+1
+            if not new_slabs:
+                new_slabs = {}
+            if "-" in slab_number:
+                slab_range_start = int(slab_number.split("-")[0])
+                slab_range_end = int(slab_number.split("-")[-1])+1
+            slabs_to_append = create_slabs(block_number=block_number, start=slab_range_start,
+                                           end=slab_range_end, width=slab_width, length=slab_length,
+                                           thickness=slab_thickness)
+            duplicate_key = None
+            for key, value in slabs_to_append.items():
+                if key in new_slabs:
+                    duplicate_key = key
+                    break
+                new_slabs[key] = value
+            if duplicate_key:
+                reply_message = entry_already_exists_message()
+                bot.send_message(user_id, reply_message)
+            else:
+                user_data[user_id]['available_saws'][current_saw_number]['new_slabs'].update(new_slabs)
+                save_user_data()
+                reply_message = slabs_added_message()
+                bot.send_message(user_id, reply_message)
+            # else:
+            #     slab_to_append = create_slabs(block_number=block_number, start=int(slab_number),
+            #                                   end=int(slab_number), width=slab_width, length=slab_length,
+            #                                   thickness=slab_thickness)
+            #     if not slab_to_append in new_slabs:
+            #         new_slabs.update(slab_to_append)
+            #         reply_message = slabs_added_message()
+            #         bot.send_message(user_id, reply_message)
+            #     else:
+            #         reply_message = entry_already_exists_message()
+            #         bot.send_message(user_id, reply_message)
+        else:
+            reply_message = no_data_found_message()
+            bot.send_message(user_id, reply_message)
+
+
 @bot.message_handler(commands=['update'])
-def process_delete_entry(message): ...
+def process_update_entry(message): ...
 
 
 @bot.message_handler(commands=['delete'])
@@ -190,14 +249,15 @@ def process_delete_entry(message):
     global temporary_data
     if entry_type and target_key:
         if entry_type == 'block':
-            blocks:dict= all_saws[saw_number]['blocks_decommissioned']
+            blocks: dict = all_saws[saw_number]['blocks_decommissioned']
             if target_key in blocks:
                 temporary_data = {
                     'target_key': target_key,
                     'entry_type': 'block',
                     'command': command,
                 }
-                reply_message = confirm_block_delete_message(saw_number=saw_number,block_number=target_key,block_value=blocks[target_key])
+                reply_message = confirm_block_delete_message(saw_number=saw_number, block_number=target_key,
+                                                             block_value=blocks[target_key])
 
                 bot.send_message(user_id, reply_message)
 

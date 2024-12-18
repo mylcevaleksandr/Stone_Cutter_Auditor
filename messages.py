@@ -1,4 +1,4 @@
-from typing import List, OrderedDict
+from typing import List
 
 from prettytable import PrettyTable, HRuleStyle, VRuleStyle
 
@@ -45,6 +45,10 @@ def start_message() -> str:
             ["/delete pass", "<number>"],
         ])
     return table
+
+
+def no_data_found_message() -> str:
+    return "No user data found."
 
 
 def select_saw_message() -> str:
@@ -102,16 +106,23 @@ def confirm_block_delete_message(saw_number: str, block_number: str, block_value
     return f"Block number; {block_number} with a value of {block_value} m3 will be deleted from saw number {saw_number}. Type /yes to delete or /no to keep it."
 
 
+def slabs_added_message():
+    return "Added slabs to saw number:"
+
+
+def entry_already_exists_message():
+    return "Slab already exists"
+
+
 def new_slabs_message(key, value, saw_number) -> str:
     title = key
     field_names = ["number", "w", "l", "t", "m2"]
     rows = []
-    for item in value:
-        for key, value in item.items():
-            rows.append(
-                [key, str(value["width"]), str(value["length"]), str(value["thickness"]), str(value["square_meters"])])
+    for slab_number, slab_data in value.items():
+        rows.append(
+            [slab_number, str(slab_data["width"]), str(slab_data["length"]), str(slab_data["thickness"]), str(slab_data["square_meters"])])
 
-    table = create_pretty_table(field_names=field_names, rows=rows, title=f"Saw # {saw_number}, {title}")
+    table = create_pretty_table(field_names=field_names, rows=rows, title=f"Saw # {saw_number}, {title}", column_widths=(15,15,15,15,15))
     return table
 
 
