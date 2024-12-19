@@ -12,7 +12,7 @@ from utils import create_slabs, get_current_saw_number
 # Initialize the bot
 bot = telebot.TeleBot(telegram_token)
 # Global variable to store temporary message data for user confirmation
-temporary_data: Dict[str, str] = {}
+temporary_data: Dict = {}
 user_data: Dict
 
 
@@ -161,8 +161,9 @@ def process_block_number(message):
                     bot.send_message(user_id, reply_message)
                     save_user_data()
                 else:
-                    reply_message = bad_value_entered(data=message.text) + block_all_commands_message(
-                        saw_number=current_saw_number)
+                    entry_value = blocks_decommissioned[block_number]
+                    reply_message = entry_already_exists_message(entry_number=block_number, entry_value=entry_value,
+                                                                 saw_number=current_saw_number)
                     bot.send_message(user_id, reply_message, parse_mode="Markdown")
             else:
                 reply_message: str = select_saw_message()
@@ -188,19 +189,21 @@ def process_slab_number(message):
         reply_message = bad_value_entered(message.text)
         bot.send_message(user_id, reply_message)
     else:
-        bot.send_message(user_id,
-                         f"block:Ok {block_number}, #: {slab_number}, w: {slab_width}, l: {slab_length}, th: {slab_thickness}")
         current_saw_number = get_current_saw_number(user_id=user_id, block_number=block_number,
                                                     user_data=user_data)
-        if current_saw_number:
+        if not current_saw_number:
+            reply_message = no_data_found_message()
+            bot.send_message(user_id, reply_message)
+        else:
             new_slabs = user_data[user_id]['available_saws'][current_saw_number].get('new_slabs', {})
-            slab_range_start = int(slab_number)
-            slab_range_end = int(slab_number)+1
             if not new_slabs:
                 new_slabs = {}
             if "-" in slab_number:
                 slab_range_start = int(slab_number.split("-")[0])
-                slab_range_end = int(slab_number.split("-")[-1])+1
+                slab_range_end = int(slab_number.split("-")[-1]) + 1
+            else:
+                slab_range_start = int(slab_number)
+                slab_range_end = int(slab_number) + 1
             slabs_to_append = create_slabs(block_number=block_number, start=slab_range_start,
                                            end=slab_range_end, width=slab_width, length=slab_length,
                                            thickness=slab_thickness)
@@ -211,27 +214,17 @@ def process_slab_number(message):
                     break
                 new_slabs[key] = value
             if duplicate_key:
-                reply_message = entry_already_exists_message()
+                duplicate_value = new_slabs[duplicate_key]
+                entry_value: str = ", ".join(
+                    f"{item_key}: {item_value}" for item_key, item_value in duplicate_value.items())
+                reply_message = entry_already_exists_message(entry_number=duplicate_key, entry_value=entry_value,
+                                                             saw_number=current_saw_number)
                 bot.send_message(user_id, reply_message)
             else:
                 user_data[user_id]['available_saws'][current_saw_number]['new_slabs'].update(new_slabs)
                 save_user_data()
-                reply_message = slabs_added_message()
+                reply_message = slabs_added_message(saw_number=current_saw_number)
                 bot.send_message(user_id, reply_message)
-            # else:
-            #     slab_to_append = create_slabs(block_number=block_number, start=int(slab_number),
-            #                                   end=int(slab_number), width=slab_width, length=slab_length,
-            #                                   thickness=slab_thickness)
-            #     if not slab_to_append in new_slabs:
-            #         new_slabs.update(slab_to_append)
-            #         reply_message = slabs_added_message()
-            #         bot.send_message(user_id, reply_message)
-            #     else:
-            #         reply_message = entry_already_exists_message()
-            #         bot.send_message(user_id, reply_message)
-        else:
-            reply_message = no_data_found_message()
-            bot.send_message(user_id, reply_message)
 
 
 @bot.message_handler(commands=['update'])
@@ -244,21 +237,33 @@ def process_delete_entry(message):
     command = message.text.split()[0].lstrip('/')
     entry_type: str = message.text.split()[1]
     target_key: str = message.text.split()[2]
-    saw_number = user_data[user_id]['current_saw_number']
-    all_saws = user_data[user_id]['available_saws']
+    current_saw_number = user_data[user_id]['current_saw_number']
+    current_saw = user_data[user_id]['available_saws'][current_saw_number]
     global temporary_data
     if entry_type and target_key:
         if entry_type == 'block':
-            blocks: dict = all_saws[saw_number]['blocks_decommissioned']
+            blocks: dict = current_saw['blocks_decommissioned']
             if target_key in blocks:
                 temporary_data = {
                     'target_key': target_key,
-                    'entry_type': 'block',
+                    'entry_type': entry_type,
                     'command': command,
                 }
-                reply_message = confirm_block_delete_message(saw_number=saw_number, block_number=target_key,
-                                                             block_value=blocks[target_key])
-
+                reply_message = confirm_delete_message(entry_type=entry_type, saw_number=current_saw_number,
+                                                       entry_number=target_key,
+                                                       entry_value=blocks[target_key])
+                bot.send_message(user_id, reply_message)
+        if entry_type == 'slab':
+            slabs: dict = current_saw['new_slabs']
+            if target_key in slabs:
+                temporary_data = {
+                    'target_key': target_key,
+                    'entry_type': entry_type,
+                    'command': command
+                }
+                reply_message = confirm_delete_message(entry_type=entry_type, saw_number=current_saw_number,
+                                                       entry_number=target_key,
+                                                       entry_value=slabs[target_key])
                 bot.send_message(user_id, reply_message)
 
 
@@ -275,14 +280,39 @@ def process_submit_changes(message):
     if entry_type == 'block':
         target_dict = selected_saw['blocks_decommissioned']
         if key in target_dict:
-            bot.send_message(user_id, command)
             if command == 'update':
                 new_value = temporary_data['new_value']
                 target_dict[key] = new_value
-                bot.send_message(user_id, f"Block {key} updated with new value {new_value} m3.")
+                bot.send_message(user_id, entry_updated_message(entry_type, key=key, new_value=new_value))
             elif command == 'delete':
                 del target_dict[key]
-                bot.send_message(user_id, f"Block {key} deleted.")
+                bot.send_message(user_id, f"{entry_type} {key} deleted.")
+        else:
+            reply_message = no_data_found_message()
+            bot.send_message(user_id, reply_message)
+    if entry_type == 'slab':
+        target_dict = selected_saw['new_slabs']
+        if key in target_dict:
+            found_data = target_dict[key]
+            if command == 'update':
+                value_id = temporary_data['value_id']
+                new_value = temporary_data['new_value']
+                if value_id in found_data:
+                    found_data[value_id] = new_value
+                    bot.send_message(user_id, entry_updated_message(entry_type, key=key, new_value=new_value))
+                else:
+                    reply_message = no_data_found_message()
+                    bot.send_message(user_id, reply_message)
+            elif command == 'delete':
+                del target_dict[key]
+                bot.send_message(user_id, f"{entry_type} {key} deleted.")
+            else:
+                reply_message = no_data_found_message()
+                bot.send_message(user_id, reply_message)
+        else:
+            reply_message = no_data_found_message()
+            bot.send_message(user_id, reply_message)
+
     save_user_data()
     temporary_data = {}
 

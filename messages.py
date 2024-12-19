@@ -34,15 +34,15 @@ def start_message() -> str:
             ["/block", "<number> <m3>"],
             ["/update block", "<number> <new m3>"],
             ["/delete block", "<number>"],
-            ["/slab", "<number> <width mm> <height mm> <thickness mm>"],
-            ["/update slab", "<number> <width> <height> or <thickness> <value mm>"],
+            ["/slab", "<block number> <number-(s)> <length mm> <width mm> <thickness mm>"],
+            ["/update slab", "<number> <width> <length> or <thickness> <value mm>"],
             ["/delete slab", "<number>"],
-            ["/tech", "<number> <width number> <height number>"],
+            ["/tech", "<block number> <length mm> <width mm>"],
             ["/update tech", "<id> <width> or <length> <value mm>"],
             ["/delete tech", "<id>"],
-            ["/pass", "<number> <width mm> <height mm> <thickness mm>"],
-            ["/update pass", "<number> <width> <height> or <thickness> <value mm>"],
-            ["/delete pass", "<number>"],
+            ["/pass", "<block number> <length mm> <width mm> <thickness mm>"],
+            ["/update pass", "<number(id)> <width> <length> or <thickness> <value mm>"],
+            ["/delete pass", "<number(id)>"],
         ])
     return table
 
@@ -102,27 +102,33 @@ def confirm_block_update_message(block_number: str, block_value: str, new_block_
     return f"It seems like you're trying to make changes to existing block number; {block_number}. Current value is: {block_value} m3, new value will be: {new_block_value} m3. Type /yes to keep the changes or /no to discard them."
 
 
-def confirm_block_delete_message(saw_number: str, block_number: str, block_value: str):
-    return f"Block number; {block_number} with a value of {block_value} m3 will be deleted from saw number {saw_number}. Type /yes to delete or /no to keep it."
+def confirm_delete_message(entry_type: str, saw_number: str, entry_number: str, entry_value: str):
+    return f"{entry_type} number; {entry_number} with a value of {entry_value} m3 will be deleted from saw number {saw_number}. Type /yes to delete or /no to keep it."
 
 
-def slabs_added_message():
-    return "Added slabs to saw number:"
+def entry_updated_message(entry_type: str, key: str, new_value: str) -> str:
+    return f"{entry_type} {key} updated with new value {new_value}."
 
 
-def entry_already_exists_message():
-    return "Slab already exists"
+def slabs_added_message(saw_number: str):
+    return f"Added slabs to saw number: {saw_number}. Enter /saw {saw_number} to see all data stored for this saw."
+
+
+def entry_already_exists_message(entry_number: str, entry_value: str, saw_number: str) -> str:
+    return f"Entry: {entry_number} with a value of: {entry_value}. Already exists in data of saw number: {saw_number}. Enter: /start or: /saw {saw_number} to see a list of all available commands on creating, updating, or deleting."
 
 
 def new_slabs_message(key, value, saw_number) -> str:
     title = key
-    field_names = ["number", "w", "l", "t", "m2"]
+    field_names = ["number", "length", "width", "thick", "m2"]
     rows = []
     for slab_number, slab_data in value.items():
         rows.append(
-            [slab_number, str(slab_data["width"]), str(slab_data["length"]), str(slab_data["thickness"]), str(slab_data["square_meters"])])
+            [slab_number, str(slab_data["length"]), str(slab_data["width"]), str(slab_data["thickness"]),
+             str(slab_data["square_meters"])])
 
-    table = create_pretty_table(field_names=field_names, rows=rows, title=f"Saw # {saw_number}, {title}", column_widths=(15,15,15,15,15))
+    table = create_pretty_table(field_names=field_names, rows=rows, title=f"Saw # {saw_number}, {title}",
+                                column_widths=(15, 15, 15, 15, 15))
     return table
 
 
