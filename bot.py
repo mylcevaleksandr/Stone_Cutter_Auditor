@@ -1,5 +1,6 @@
-from multiprocessing.reduction import duplicate
-from typing import List, Dict
+from typing import Dict
+
+from calculations import calculate_square_meters
 from messages import *
 
 from config import telegram_token
@@ -125,13 +126,13 @@ def process_saw_number(message):
                 else:
                     if key == "blocks_decommissioned":
                         saw_message += blocks_decommissioned_message(key, value, saw_number)
-                        saw_message += block_all_commands_message()
                     if key == "new_slabs":
                         saw_message += new_slabs_message(key, value, saw_number)
                     if key == "tech_cuts":
                         saw_message += tech_cuts_message(key, value, saw_number)
                     if key == "new_blocks":
                         saw_message += new_blocks_message(key, value, saw_number)
+            saw_message += "Enter /start to see all available commands."
             bot.send_message(user_id, saw_message, parse_mode='Markdown')
         else:
             reply_message = bad_value_entered(message.text)
@@ -227,6 +228,52 @@ def process_slab_number(message):
                 bot.send_message(user_id, reply_message)
 
 
+@bot.message_handler(commands=["tech"])
+def process_tech_number(message):
+    user_id: str = str(message.chat.id)
+    split_message = message.text.split()
+    # block_number: str | None = None
+    # length: str | None = None
+    # width: str | None = None
+    try:
+        block_number: str = split_message[1]
+        length = split_message[2]
+        width = split_message[3]
+    except IndexError:
+        reply_message = bad_value_entered(message.text)
+        bot.reply_to(message, reply_message)
+        return
+    if not block_number or not length or not width:
+        reply_message = bad_value_entered(message.text)
+        bot.send_message(user_id, reply_message)
+    else:
+        current_saw_number = get_current_saw_number(user_id=user_id, block_number=block_number,
+                                                    user_data=user_data)
+        if not current_saw_number:
+            reply_message = no_data_found_message()
+            bot.send_message(user_id, reply_message)
+            bot.send_message(user_id, f"{user_id}, {block_number},{user_data}")
+        else:
+            tech_cuts_dict: dict = user_data[user_id]['available_saws'][current_saw_number]['tech_cuts']
+            total_square_meters = calculate_square_meters(width_mm=int(width), length_mm=int(length))
+            new_data = {
+                'length': length,
+                'width': width,
+                'total': total_square_meters
+            }
+            if block_number in tech_cuts_dict.keys():
+                block_dict: dict = tech_cuts_dict[block_number]
+                new_id = str(max(map(int, block_dict.keys()), default=0) + 1)
+                block_dict[new_id] = new_data
+            else:
+                tech_cuts_dict[block_number] = {
+                    '1': new_data
+                }
+            reply_message = tech_cuts_added_message(saw_number=current_saw_number)
+            bot.send_message(user_id, reply_message)
+            save_user_data()
+
+
 @bot.message_handler(commands=['update'])
 def process_update_entry(message): ...
 
@@ -235,8 +282,15 @@ def process_update_entry(message): ...
 def process_delete_entry(message):
     user_id: str = str(message.chat.id)
     command = message.text.split()[0].lstrip('/')
-    entry_type: str = message.text.split()[1]
-    target_key: str = message.text.split()[2]
+    entry_type = None
+    target_key = None
+    try:
+        entry_type: str | None = message.text.split()[1]
+        target_key: str | None = message.text.split()[2]
+    except IndexError:
+        reply_message = bad_value_entered(message.text)
+        bot.reply_to(message, reply_message)
+        return
     current_saw_number = user_data[user_id]['current_saw_number']
     current_saw = user_data[user_id]['available_saws'][current_saw_number]
     global temporary_data
@@ -261,9 +315,10 @@ def process_delete_entry(message):
                     'entry_type': entry_type,
                     'command': command
                 }
+                result_string = ", ".join([f"{key}: {value}" for key, value in slabs[target_key].items()])
                 reply_message = confirm_delete_message(entry_type=entry_type, saw_number=current_saw_number,
                                                        entry_number=target_key,
-                                                       entry_value=slabs[target_key])
+                                                       entry_value=result_string)
                 bot.send_message(user_id, reply_message)
 
 

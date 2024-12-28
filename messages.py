@@ -48,7 +48,7 @@ def start_message() -> str:
 
 
 def no_data_found_message() -> str:
-    return "No user data found."
+    return "No user data found. Enter /start to see a lict of available commands."
 
 
 def select_saw_message() -> str:
@@ -62,8 +62,7 @@ def empty_entry_message(key: str, saw_number: str) -> str:
 
 
 def bad_value_entered(data: str) -> str:
-    return (f"The data you have entered: {data} is incorrect format. Please review and enter the command again or "
-            f"enter /start or /saw <number> to see all options")
+    return f"The data you have entered: {data} is incorrect format. Please review and enter the command again or enter /start or /saw <number> to see all options"
 
 
 def block_all_commands_message(saw_number: str = "") -> str:
@@ -114,6 +113,10 @@ def slabs_added_message(saw_number: str):
     return f"Added slabs to saw number: {saw_number}. Enter /saw {saw_number} to see all data stored for this saw."
 
 
+def tech_cuts_added_message(saw_number: str):
+    return f"Added slabs to saw number: {saw_number}. Enter /saw {saw_number} to see all data stored for this saw."
+
+
 def entry_already_exists_message(entry_number: str, entry_value: str, saw_number: str) -> str:
     return f"Entry: {entry_number} with a value of: {entry_value}. Already exists in data of saw number: {saw_number}. Enter: /start or: /saw {saw_number} to see a list of all available commands on creating, updating, or deleting."
 
@@ -134,14 +137,19 @@ def new_slabs_message(key, value, saw_number) -> str:
 
 def tech_cuts_message(key, value, saw_number) -> str:
     title = key
-    field_names = ["block #", "w", "l", "m2"]
+    field_names = ["block#", "id", "length", "width", "m2"]
     rows = []
-    for item in value:
-        for key, value in item.items():
-            rows.append(
-                [key, str(value["width"]), str(value["length"]), str(value["square_meters"])])
+    for block_id, block_data in value.items():
+        for cut_id, cut_data in block_data.items():
+            rows.append([
+                block_id,
+                cut_id,
+                str(cut_data.get("length", "")),
+                str(cut_data.get("width", "")),
+                str(cut_data.get("total", ""))])
 
-    table = create_pretty_table(field_names=field_names, rows=rows, title=f"Saw # {saw_number}, {title}")
+    table = create_pretty_table(field_names=field_names, rows=rows, title=f"Saw # {saw_number}, {title}",
+                                column_widths=(15, 15, 15, 15, 15))
     return table
 
 
