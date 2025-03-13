@@ -1,4 +1,4 @@
-# This is a bot I am creating to keep track of square meters of stone slabs that are produced at the stone cutting factory.
+# This is a bot I am creating to keep track of square meters of stone slabs that are produced at a stone cutting factory in my city.
 
 ---
 
@@ -6,12 +6,14 @@
 
 + __Eliminate waste of paper to save the forests.__
 + __Simplify accounting by automatically multiplying square meters from the input slab sizes.__
-
++ __Make it possible for each worker to pass the data of his finished product to a common database in any way convenient. He should be able to use either his smartphone or a PC and should be able to interact with either the telegram bot or the web app to pass the data.__
++ __Then at the end of the day the factory bookkeeper should be able to see a table filled by all the workers who were on the shift that day. With all square meters already calculated out. Then all he will need to do is take the data of each separate worker and issue hit the days wages depending on the price per square meter.__
+ 
 ## Future goals:
 
-+ __Expand the simple bot into a bigger app to allow more than one worker to use it.__
++ __Expand the simple bot into a bigger app written with Angular framework to allow more than one worker to use it.__
 + __Save all input data on a server and make an api with charts and schedules so a bookkeeper can open it, inspect how
-  many square meters each worker prodused per month and issue a salary accordingly.__
+  many square meters each worker produced per month and issue a salary accordingly.__
 
 ___
 
@@ -19,7 +21,7 @@ ___
 
 1) __Fork and clone the repo to the local machine using this command;__
 
-> git clone https://github.com/mylcevaleksandr/Stone_Cutter_Accounter.git .
+> git clone https://github.com/mylcevaleksandr/Stone_Cutter_Auditor.git .
 
 2) __Open terminal in project directory root and run;__
 
